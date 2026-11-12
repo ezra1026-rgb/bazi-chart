@@ -161,6 +161,7 @@ tr.cur td,tr.cur th{box-shadow:inset 0 0 0 9999px #f7c6d455}
 .day .nd{font-size:9px;line-height:1}
 .notes .nview.clip{max-height:4.6em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 45%,transparent);mask-image:linear-gradient(#000 45%,transparent)}
 .notes.min .nbtns .ext{display:none}
+.notes.min .nbtns.ext{display:none}
 .ovf{display:flex;flex-wrap:wrap;gap:6px}
 .starry{background:linear-gradient(160deg,var(--lav) 0%,var(--sky) 60%,var(--sakura) 100%)}
 .natal{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center}
@@ -564,6 +565,12 @@ details.rule{background:var(--card);border-radius:14px;padding:8px 12px}details.
       <button id="noteSave" class="primary" hidden>儲存</button>
       <button id="noteCancel" hidden>取消</button>
       <span class="ext muted">有筆記的日期：</span><span class="chips ext" id="noteDates"></span>
+    </div>
+    <div class="nbtns ext" id="noteBak">
+      <button id="noteExport" type="button">匯出備份（JSON）</button>
+      <button id="noteImport" type="button">匯入備份</button>
+      <input id="noteFile" type="file" accept="application/json,.json" hidden>
+      <span class="muted" id="noteBakMsg">筆記只存在這個瀏覽器，建議定期匯出備份。</span>
     </div>
   </section>
 </main>
@@ -1429,6 +1436,35 @@ document.getElementById("noteSave").addEventListener("click",function(){var k=cu
   lsSave();st.textContent="已存在這台裝置";});
 document.getElementById("btnNote").addEventListener("click",function(){document.getElementById("sec-notes").scrollIntoView({behavior:"smooth",block:"start"});});
 NOTES=lsLoad();
+(function(){var msg=document.getElementById("noteBakMsg");
+  function say(t){msg.textContent=t;}
+  document.getElementById("noteExport").addEventListener("click",function(){
+    var keys=Object.keys(NOTES).filter(function(k){return NOTES[k]&&NOTES[k].body;});
+    if(!keys.length){say("目前沒有筆記可匯出。");return;}
+    var notes={};keys.forEach(function(k){notes[k]=NOTES[k];});
+    var blob=new Blob([JSON.stringify({app:"bazi-chart-notes",version:1,exportedAt:new Date().toISOString(),notes:notes},null,2)],{type:"application/json"});
+    var n=new Date(),ds=n.getFullYear()+("0"+(n.getMonth()+1)).slice(-2)+("0"+n.getDate()).slice(-2);
+    var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="notes-backup-"+ds+".json";document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);say("已匯出 "+keys.length+" 筆筆記。");});
+  var fi=document.getElementById("noteFile");
+  document.getElementById("noteImport").addEventListener("click",function(){fi.value="";fi.click();});
+  fi.addEventListener("change",function(){var f=fi.files&&fi.files[0];if(!f)return;
+    var rd=new FileReader();
+    rd.onerror=function(){say("讀取檔案失敗。");};
+    rd.onload=function(){var j;try{j=JSON.parse(rd.result);}catch(e){say("匯入失敗：不是有效的 JSON 檔。");return;}
+      var src=j&&j.app==="bazi-chart-notes"&&j.notes&&typeof j.notes==="object"?j.notes:null;
+      if(!src){say("匯入失敗：檔案格式不符（不是本頁匯出的備份）。");return;}
+      var add=0,upd=0,skip=0;
+      Object.keys(src).forEach(function(k){var x=src[k];
+        if(!/^\d{4}-\d{1,2}-\d{1,2}$/.test(k)||!x||typeof x.body!=="string"||!x.body){skip++;return;}
+        var cur=NOTES[k];var ts=+x.updatedAt||0;
+        if(!cur||!cur.body){NOTES[k]={date:k,body:x.body,updatedAt:ts};add++;}
+        else if(cur.body!==x.body&&ts>(+cur.updatedAt||0)){NOTES[k]={date:k,body:x.body,updatedAt:ts};upd++;}
+        else skip++;});
+      lsSave();renderAll();
+      say("匯入完成：新增 "+add+" 筆、更新 "+upd+" 筆、略過 "+skip+" 筆（同日以較新的為準）。");};
+    rd.readAsText(f,"utf-8");});
+})();
 document.getElementById("noteStat").textContent="筆記存在這台裝置";
 document.querySelectorAll(".nav [data-go]").forEach(function(b){b.addEventListener("click",function(){var el=document.getElementById(b.dataset.go);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});});});
 var noteOpen=false;
